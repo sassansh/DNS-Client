@@ -178,9 +178,28 @@ public class DNSLookupService {
      * @return The transaction ID used for the query.
      */
     protected int buildQuery(ByteBuffer queryBuffer, DNSQuestion question) {
+        short transactionID = (short) Math.floor(Math.random()*(Math.pow(2, 16)-1));
+        queryBuffer.putShort(transactionID);
+        byte[] header = {
+                0x00, 0x00, // |QR|   Opcode  |AA|TC|RD|RA|   Z    |   RCODE   |
+                0x00, 0x01, // |                    QDCOUNT                    |
+                0x00, 0x00, // |                    ANCOUNT                    |
+                0x00, 0x00, // |                    NSCOUNT                    |
+                0x00, 0x00  // |                    ARCOUNT                    |
+        };
+        queryBuffer.put(header);
 
-        /* TO BE COMPLETED BY THE STUDENT */
-        return 0;
+        String[] hostName = question.getHostName().split("\\.");
+        for (String label : hostName) {
+            queryBuffer.put((byte) label.length());
+            for (byte charByte : label.getBytes()) {
+                queryBuffer.put(charByte);
+            }
+        }
+        queryBuffer.putShort((short) question.getRecordType().getCode());
+        queryBuffer.putShort((short) question.getRecordClass().getCode());
+
+        return transactionID;
     }
 
     /**
