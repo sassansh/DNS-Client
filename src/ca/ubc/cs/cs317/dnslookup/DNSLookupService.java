@@ -142,6 +142,8 @@ public class DNSLookupService {
     protected void iterativeQuery(DNSQuestion question, InetAddress server) {
 
         /* TO BE COMPLETED BY THE STUDENT */
+        // Temporary call for testing TODO: implement properly
+        individualQueryProcess(question, server);
     }
 
     /**
@@ -161,8 +163,35 @@ public class DNSLookupService {
      * set.
      */
     protected Set<ResourceRecord> individualQueryProcess(DNSQuestion question, InetAddress server) {
+        // First pass implementation for testing other functions
+        // TODO: Refine once called functions are implemented
+        int TEMP_BUFF_SIZE = 50;
+        ByteBuffer queryBuffer = ByteBuffer.allocate(TEMP_BUFF_SIZE);
+        ByteBuffer responseBuffer = ByteBuffer.allocate(TEMP_BUFF_SIZE);
+        int transactionID = buildQuery(queryBuffer, question);
+        int receivedTransactionID = 256; // set as Invalid ID
 
-        /* TO BE COMPLETED BY THE STUDENT */
+        int queryAttempt = 0;
+        while (queryAttempt < MAX_QUERY_ATTEMPTS) {
+            try {
+                verbose.printQueryToSend(question, server, transactionID);
+                socket.send(new DatagramPacket(queryBuffer.array(), queryBuffer.position(), server, DEFAULT_DNS_PORT));
+                DatagramPacket responsePacket = new DatagramPacket(responseBuffer.array(), queryBuffer.position());
+                queryAttempt++;
+                long timeOut = System.currentTimeMillis() + SO_TIMEOUT;
+
+                while (transactionID != receivedTransactionID && System.currentTimeMillis() < timeOut) {
+                    try {
+                        socket.receive(responsePacket);
+                        receivedTransactionID = responseBuffer.getShort(0);
+                    } catch (IOException e) {}
+                }
+                Set<ResourceRecord> results = processResponse(responseBuffer);
+                results.forEach((ResourceRecord rr) -> cache.addResult(rr));
+                return results;
+            } catch (IOException e) {}
+        }
+
         return null;
     }
 
@@ -178,9 +207,35 @@ public class DNSLookupService {
      * @return The transaction ID used for the query.
      */
     protected int buildQuery(ByteBuffer queryBuffer, DNSQuestion question) {
+        byte[] transactionID = new byte[2];
+        random.nextBytes(transactionID);
+        queryBuffer.put(transactionID);
 
-        /* TO BE COMPLETED BY THE STUDENT */
-        return 0;
+        // Basic DNS header for a single, non recursive question
+        byte[] header = {   // +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+                0x00, 0x00, // |QR|   Opcode  |AA|TC|RD|RA|   Z    |   RCODE   |
+                0x00, 0x01, // |                    QDCOUNT                    |
+                0x00, 0x00, // |                    ANCOUNT                    |
+                0x00, 0x00, // |                    NSCOUNT                    |
+                0x00, 0x00  // |                    ARCOUNT                    |
+        };
+        queryBuffer.put(header);
+
+        // Place host name in buffer following rfc1035 specs
+        String[] hostName = question.getHostName().split("\\.");
+        for (String label : hostName) {
+            queryBuffer.put((byte) label.length());
+            for (byte charByte : label.getBytes()) {
+                queryBuffer.put(charByte);
+            }
+        }
+        // Host name terminator
+        queryBuffer.put((byte) 0x00);
+
+        queryBuffer.putShort((short) question.getRecordType().getCode());
+        queryBuffer.putShort((short) question.getRecordClass().getCode());
+
+        return ByteBuffer.wrap(transactionID).getShort();
     }
 
     /**
