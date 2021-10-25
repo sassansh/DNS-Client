@@ -165,7 +165,7 @@ public class DNSLookupService {
     protected Set<ResourceRecord> individualQueryProcess(DNSQuestion question, InetAddress server) {
         // First pass implementation for testing other functions
         // TODO: Refine once called functions are implemented
-        int TEMP_BUFF_SIZE = 50;
+        int TEMP_BUFF_SIZE = 1024;
         ByteBuffer queryBuffer = ByteBuffer.allocate(TEMP_BUFF_SIZE);
         ByteBuffer responseBuffer = ByteBuffer.allocate(TEMP_BUFF_SIZE);
         int transactionID = buildQuery(queryBuffer, question);
@@ -176,7 +176,7 @@ public class DNSLookupService {
             try {
                 verbose.printQueryToSend(question, server, transactionID);
                 socket.send(new DatagramPacket(queryBuffer.array(), queryBuffer.position(), server, DEFAULT_DNS_PORT));
-                DatagramPacket responsePacket = new DatagramPacket(responseBuffer.array(), queryBuffer.position());
+                DatagramPacket responsePacket = new DatagramPacket(responseBuffer.array(), TEMP_BUFF_SIZE);
                 queryAttempt++;
                 long timeOut = System.currentTimeMillis() + SO_TIMEOUT;
 
@@ -187,7 +187,6 @@ public class DNSLookupService {
                     } catch (IOException e) {}
                 }
                 Set<ResourceRecord> results = processResponse(responseBuffer);
-                results.forEach((ResourceRecord rr) -> cache.addResult(rr));
                 return results;
             } catch (IOException e) {}
         }
@@ -252,7 +251,24 @@ public class DNSLookupService {
      */
     protected Set<ResourceRecord> processResponse(ByteBuffer responseBuffer) {
 
-        /* TO BE COMPLETED BY THE STUDENT */
+        // Process Response Header
+        int ID = ((responseBuffer.get(0) & 0xFF) << 8) | (responseBuffer.get(1) & 0xFF);
+        boolean AA = ((responseBuffer.get(2) >> 2) & 0x01) == 1;
+        int RCODE = responseBuffer.get(3) & 0x07;
+
+        verbose.printResponseHeaderInfo(ID, AA, RCODE);
+
+        int QDCOUNT = ((responseBuffer.get(4) & 0xFF) << 8) | (responseBuffer.get(5) & 0xFF);
+        int ANCOUNT = ((responseBuffer.get(6) & 0xFF) << 8) | (responseBuffer.get(7) & 0xFF);
+        int NSCOUNT = ((responseBuffer.get(8) & 0xFF) << 8) | (responseBuffer.get(9) & 0xFF);
+        int ARCOUNT = ((responseBuffer.get(10) & 0xFF) << 8) | (responseBuffer.get(11) & 0xFF);
+
+        verbose.printAnswersHeader(ANCOUNT);
+        verbose.printNameserversHeader(NSCOUNT);
+        verbose.printAdditionalInfoHeader(ARCOUNT);
+
+
+
         return null;
     }
 
