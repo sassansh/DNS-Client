@@ -252,24 +252,51 @@ public class DNSLookupService {
     protected Set<ResourceRecord> processResponse(ByteBuffer responseBuffer) {
 
         // Process Response Header
-        int ID = ((responseBuffer.get(0) & 0xFF) << 8) | (responseBuffer.get(1) & 0xFF);
+        int ID = (responseBuffer.get(0) << 8) | responseBuffer.get(1);
         boolean AA = ((responseBuffer.get(2) >> 2) & 0x01) == 1;
         int RCODE = responseBuffer.get(3) & 0x07;
 
         verbose.printResponseHeaderInfo(ID, AA, RCODE);
 
-        int QDCOUNT = ((responseBuffer.get(4) & 0xFF) << 8) | (responseBuffer.get(5) & 0xFF);
-        int ANCOUNT = ((responseBuffer.get(6) & 0xFF) << 8) | (responseBuffer.get(7) & 0xFF);
-        int NSCOUNT = ((responseBuffer.get(8) & 0xFF) << 8) | (responseBuffer.get(9) & 0xFF);
-        int ARCOUNT = ((responseBuffer.get(10) & 0xFF) << 8) | (responseBuffer.get(11) & 0xFF);
+        // Count of Questions, Answers, NameServers & Additional Records
+        int QDCOUNT = (responseBuffer.get(4) << 8) | responseBuffer.get(5);
+        int ANCOUNT = (responseBuffer.get(6) << 8) | responseBuffer.get(7);
+        int NSCOUNT = (responseBuffer.get(8) << 8) | responseBuffer.get(9);
+        int ARCOUNT = (responseBuffer.get(10) << 8) | responseBuffer.get(11);
 
         verbose.printAnswersHeader(ANCOUNT);
         verbose.printNameserversHeader(NSCOUNT);
         verbose.printAdditionalInfoHeader(ARCOUNT);
 
+        // Calculate pointer for start of Answers section
+        int pointer = 12; // Start of QNAME in first Question section
+        for (int i = 0; i < QDCOUNT; i++) {
+            while (responseBuffer.get(pointer) != 0x00) { // Moves pointer to end of QNAME indicated by 0x00
+                pointer++;
+            }
+            pointer += 5; // Skip over QTYPE & QCLASS (4 bytes total)
+        }
 
+        // Process resource records
+        Set<ResourceRecord> answerRecords = new HashSet<>();
+        Set<ResourceRecord> authorityRecords = new HashSet<>();
+        Set<ResourceRecord> additionalRecords = new HashSet<>();
 
-        return null;
+        try {
+            for (int i = 0; i < ANCOUNT; i++) {
+                pointer = processRecords(responseBuffer, pointer, answerRecords);
+            }
+            for (int i = 0; i < NSCOUNT; i++) {
+                pointer = processRecords(responseBuffer, pointer, authorityRecords);
+            }
+            for (int i = 0; i < ARCOUNT; i++) {
+                pointer = processRecords(responseBuffer, pointer, additionalRecords);
+            }
+        } catch (Exception e) {
+            // Do nothing
+        }
+
+        return authorityRecords;
     }
 
     /**
@@ -284,5 +311,14 @@ public class DNSLookupService {
     }
 
     public static class CnameIndirectionLimitException extends Exception {
+    }
+
+    /**
+     * Helper function to process resource records.
+     */
+    private static int processRecords(ByteBuffer responseBuffer, int pointer,
+                                          Set<ResourceRecord> records) {
+
+        return pointer++;
     }
 }
