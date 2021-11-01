@@ -144,8 +144,33 @@ public class DNSLookupService {
     protected void iterativeQuery(DNSQuestion question, InetAddress server) {
 
         /* TO BE COMPLETED BY THE STUDENT */
-        // Temporary call for testing TODO: implement properly
-        individualQueryProcess(question, server);
+        Set<ResourceRecord> nextNameServers;
+        InetAddress IP = null;
+        DNSQuestion nameServerQuestion = null;
+        nextNameServers = individualQueryProcess(question, server);
+
+        while (!nextNameServers.isEmpty() && cache.getCachedResults(question, true).isEmpty()) {
+            for (ResourceRecord record : nextNameServers) {
+                nameServerQuestion = new DNSQuestion(record.getTextResult(),
+                        RecordType.A, record.getRecordClass());
+                List<ResourceRecord> nextNS = cache.getCachedResults(nameServerQuestion, true);
+                if (nextNS.isEmpty()) {
+                    continue;
+                } else {
+                    try {
+                        IP = nextNS.get(0).getInetResult();
+                        break;
+                    } catch (Exception e) {
+                        // Do nothing
+                    }
+                }
+            }
+            if (IP != null) {
+                iterativeQuery(question, IP);
+            } else {
+                iterativeQuery(nameServerQuestion, nameServer);
+            }
+        }
     }
 
     /**
@@ -171,7 +196,7 @@ public class DNSLookupService {
         ByteBuffer queryBuffer = ByteBuffer.allocate(TEMP_BUFF_SIZE);
         ByteBuffer responseBuffer = ByteBuffer.allocate(TEMP_BUFF_SIZE);
         int transactionID = buildQuery(queryBuffer, question);
-        int receivedTransactionID = 256; // set as Invalid ID
+        int receivedTransactionID = 999999; // set as Invalid ID
 
         int queryAttempt = 0;
         while (queryAttempt < MAX_QUERY_ATTEMPTS) {
@@ -188,12 +213,16 @@ public class DNSLookupService {
                         receivedTransactionID = responseBuffer.getShort(0);
                     } catch (IOException e) {}
                 }
-                Set<ResourceRecord> nameServerResults = processResponse(responseBuffer);
-                return nameServerResults;
+                boolean isResponse = ((responseBuffer.get(2) >> 7) & 0x01) == 1; //QR is 1 meaning response
+                if (transactionID == receivedTransactionID && isResponse) { // if ID matches and is a response
+                    Set<ResourceRecord> nameServerResults = processResponse(responseBuffer);
+                    return nameServerResults;
+                }
+                return null;
             } catch (IOException e) {}
         }
 
-        return new HashSet<>(); // return empty set if no response received
+        return null; // return null if no response received
     }
 
     /**
@@ -256,7 +285,7 @@ public class DNSLookupService {
         // Process Response Header
         int ID = responseBuffer.getShort(0);
         boolean AA = ((responseBuffer.get(2) >> 2) & 0x01) == 1;
-        int RCODE = responseBuffer.get(3) & 0x07;
+        int RCODE = responseBuffer.get(3) & 0x0F;
 
         verbose.printResponseHeaderInfo(ID, AA, RCODE);
 
@@ -297,7 +326,15 @@ public class DNSLookupService {
             // Do nothing
         }
 
-        return authorityRecords;
+        // Filter out NS records
+        Set<ResourceRecord> nsRecords = new HashSet<>();
+        for (ResourceRecord record : authorityRecords) {
+            if (record.getRecordType() == RecordType.NS) {
+                nsRecords.add(record);
+            }
+        }
+
+        return nsRecords;
     }
 
     /**
