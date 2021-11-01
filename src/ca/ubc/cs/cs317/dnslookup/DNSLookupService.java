@@ -142,6 +142,26 @@ public class DNSLookupService {
      * @param server   Address of the server to be used for the first query.
      */
     protected void iterativeQuery(DNSQuestion question, InetAddress server) {
+//        Set<ResourceRecord> nameServerResults;
+
+//        while (!hasRecord(question)) {
+//            nameServerResults = individualQueryProcess(question, server);
+//            if (nameServerResults.size() == 0) return;
+//
+//            // Check if returned name servers has known IP s
+//            List<ResourceRecord> knownIPs = new ArrayList<>();
+//            nameServerResults.forEach((r) -> {
+//                DNSQuestion q = new DNSQuestion(r.getTextResult(), RecordType.A, RecordClass.IN);
+//                knownIPs.addAll(cache.getCachedResults(q, false));
+//            });
+//
+//            // Obtain the IP address of a random nameserver if non are known
+//            if (knownIPs.size() == 0) {
+//                ResourceRecord firstNs = nameServerResults.iterator().next();
+//                DNSQuestion q = new DNSQuestion(firstNs.getTextResult(), RecordType.A, RecordClass.IN);
+//                iterativeQuery(q, server);
+//                knownIPs.addAll(cache.getCachedResults(q, false));
+//            }
 
         /* TO BE COMPLETED BY THE STUDENT */
         Set<ResourceRecord> nextNameServers;
@@ -171,6 +191,23 @@ public class DNSLookupService {
                 iterativeQuery(nameServerQuestion, nameServer);
             }
         }
+           //  server = knownIPs.get(0).getInetResult();
+//        }
+//    }
+//
+//    /**
+//     * Helper function that returns true if an answer exists to the question (either with the same record type or an
+//     * equivalent CNAME record).
+//     *
+//     * @param question Host name and record type/class to be used for the query.
+//     */
+//    private boolean hasRecord(DNSQuestion question) {
+//        List<ResourceRecord> list = cache.getCachedResults(question, true);
+//        for (ResourceRecord rr : list) {
+//            if (rr.getRecordType() == question.getRecordType() || rr.getRecordType() == RecordType.CNAME)
+//                return true;
+//        }
+//        return false;
     }
 
     /**
