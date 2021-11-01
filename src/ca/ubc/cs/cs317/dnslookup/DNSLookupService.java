@@ -188,12 +188,12 @@ public class DNSLookupService {
                         receivedTransactionID = responseBuffer.getShort(0);
                     } catch (IOException e) {}
                 }
-                Set<ResourceRecord> results = processResponse(responseBuffer);
-                return results;
+                Set<ResourceRecord> nameServerResults = processResponse(responseBuffer);
+                return nameServerResults;
             } catch (IOException e) {}
         }
 
-        return null;
+        return new HashSet<>(); // return empty set if no response received
     }
 
     /**
@@ -266,10 +266,6 @@ public class DNSLookupService {
         int NSCOUNT = responseBuffer.getShort(8);
         int ARCOUNT = responseBuffer.getShort(10);
 
-        verbose.printAnswersHeader(ANCOUNT);
-        verbose.printNameserversHeader(NSCOUNT);
-        verbose.printAdditionalInfoHeader(ARCOUNT);
-
         // Skip over the question section
         pointer = 12; // Start of QNAME in first Question section
         for (int i = 0; i < QDCOUNT; i++) {
@@ -285,12 +281,15 @@ public class DNSLookupService {
         Set<ResourceRecord> additionalRecords = new HashSet<>();
 
         try {
+            verbose.printAnswersHeader(ANCOUNT);
             for (int i = 0; i < ANCOUNT; i++) {
                 processRecords(responseBuffer, answerRecords);
             }
+            verbose.printNameserversHeader(NSCOUNT);
             for (int i = 0; i < NSCOUNT; i++) {
                 processRecords(responseBuffer, authorityRecords);
             }
+            verbose.printAdditionalInfoHeader(ARCOUNT);
             for (int i = 0; i < ARCOUNT; i++) {
                 processRecords(responseBuffer, additionalRecords);
             }
@@ -354,6 +353,9 @@ public class DNSLookupService {
                     responseBuffer.get(pointer + 15));
             pointer += 16;
         } else if (type == RecordType.CNAME || type == RecordType.NS || type == RecordType.MX) {
+            if (type == RecordType.MX) {
+                pointer += 2; // Skip preference
+            }
             result = getName(responseBuffer, pointer);
         } else {
             byte data[] = new byte[rdLength];
