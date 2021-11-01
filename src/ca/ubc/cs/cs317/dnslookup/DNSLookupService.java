@@ -21,6 +21,8 @@ public class DNSLookupService {
     private final DatagramSocket socket;
     private InetAddress nameServer;
 
+    private static int pointer = 0;
+
     /**
      * Creates a new lookup service. Also initializes the datagram socket object with a default timeout.
      *
@@ -165,7 +167,7 @@ public class DNSLookupService {
     protected Set<ResourceRecord> individualQueryProcess(DNSQuestion question, InetAddress server) {
         // First pass implementation for testing other functions
         // TODO: Refine once called functions are implemented
-        int TEMP_BUFF_SIZE = 50;
+        int TEMP_BUFF_SIZE = 1024;
         ByteBuffer queryBuffer = ByteBuffer.allocate(TEMP_BUFF_SIZE);
         ByteBuffer responseBuffer = ByteBuffer.allocate(TEMP_BUFF_SIZE);
         int transactionID = buildQuery(queryBuffer, question);
@@ -176,7 +178,7 @@ public class DNSLookupService {
             try {
                 verbose.printQueryToSend(question, server, transactionID);
                 socket.send(new DatagramPacket(queryBuffer.array(), queryBuffer.position(), server, DEFAULT_DNS_PORT));
-                DatagramPacket responsePacket = new DatagramPacket(responseBuffer.array(), queryBuffer.position());
+                DatagramPacket responsePacket = new DatagramPacket(responseBuffer.array(), TEMP_BUFF_SIZE);
                 queryAttempt++;
                 long timeOut = System.currentTimeMillis() + SO_TIMEOUT;
 
@@ -186,13 +188,12 @@ public class DNSLookupService {
                         receivedTransactionID = responseBuffer.getShort(0);
                     } catch (IOException e) {}
                 }
-                Set<ResourceRecord> results = processResponse(responseBuffer);
-                results.forEach((ResourceRecord rr) -> cache.addResult(rr));
-                return results;
+                Set<ResourceRecord> nameServerResults = processResponse(responseBuffer);
+                return nameServerResults;
             } catch (IOException e) {}
         }
 
-        return null;
+        return new HashSet<>(); // return empty set if no response received
     }
 
     /**
@@ -252,8 +253,51 @@ public class DNSLookupService {
      */
     protected Set<ResourceRecord> processResponse(ByteBuffer responseBuffer) {
 
-        /* TO BE COMPLETED BY THE STUDENT */
-        return null;
+        // Process Response Header
+        int ID = responseBuffer.getShort(0);
+        boolean AA = ((responseBuffer.get(2) >> 2) & 0x01) == 1;
+        int RCODE = responseBuffer.get(3) & 0x07;
+
+        verbose.printResponseHeaderInfo(ID, AA, RCODE);
+
+        // Count of Questions, Answers, NameServers & Additional Records
+        int QDCOUNT = responseBuffer.getShort(4);
+        int ANCOUNT = responseBuffer.getShort(6);
+        int NSCOUNT = responseBuffer.getShort(8);
+        int ARCOUNT = responseBuffer.getShort(10);
+
+        // Skip over the question section
+        pointer = 12; // Start of QNAME in first Question section
+        for (int i = 0; i < QDCOUNT; i++) {
+            while (responseBuffer.get(pointer) != 0) {
+                pointer++;
+            }
+            pointer += 5;
+        }
+
+        // Process Resource Records
+        Set<ResourceRecord> answerRecords = new HashSet<>();
+        Set<ResourceRecord> authorityRecords = new HashSet<>();
+        Set<ResourceRecord> additionalRecords = new HashSet<>();
+
+        try {
+            verbose.printAnswersHeader(ANCOUNT);
+            for (int i = 0; i < ANCOUNT; i++) {
+                processRecords(responseBuffer, answerRecords);
+            }
+            verbose.printNameserversHeader(NSCOUNT);
+            for (int i = 0; i < NSCOUNT; i++) {
+                processRecords(responseBuffer, authorityRecords);
+            }
+            verbose.printAdditionalInfoHeader(ARCOUNT);
+            for (int i = 0; i < ARCOUNT; i++) {
+                processRecords(responseBuffer, additionalRecords);
+            }
+        } catch (Exception e) {
+            // Do nothing
+        }
+
+        return authorityRecords;
     }
 
     /**
@@ -268,5 +312,119 @@ public class DNSLookupService {
     }
 
     public static class CnameIndirectionLimitException extends Exception {
+    }
+
+    /**
+     * Helper function to process resource records.
+     */
+    private void processRecords(ByteBuffer responseBuffer, Set<ResourceRecord> records) {
+        //System.out.println(String.format("0x%08X", responseBuffer.get(pointer)));
+        // Get Hostname
+        String hostName = getName(responseBuffer, pointer);
+        // Get Type
+        int typeCode = responseBuffer.getShort(pointer);
+        RecordType type = RecordType.getByCode(typeCode);
+        pointer += 2;
+        // Get Class
+        int classCode = responseBuffer.getShort(pointer);
+        RecordClass recordClass = RecordClass.getByCode(classCode);
+        pointer += 2;
+        // Get TTL
+        int ttl = responseBuffer.getInt(pointer);
+        pointer += 4;
+        // Get RDLENGTH
+        int rdLength = responseBuffer.getShort(pointer);
+        pointer += 2;
+
+        // Get RDATA
+        String result = "";
+        if (type == RecordType.A) {
+            result = String.format("%d.%d.%d.%d", responseBuffer.get(pointer) & 0xFFL,
+                    responseBuffer.get(pointer + 1) & 0xFFL, responseBuffer.get(pointer + 2)& 0xFFL,
+                    responseBuffer.get(pointer + 3) & 0xFFL); // OxFFL for unsigned byte
+            pointer += 4;
+        } else if (type == RecordType.AAAA) {
+            result = String.format("%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+                    responseBuffer.get(pointer), responseBuffer.get(pointer + 1), responseBuffer.get(pointer + 2),
+                    responseBuffer.get(pointer + 3), responseBuffer.get(pointer + 4), responseBuffer.get(pointer + 5),
+                    responseBuffer.get(pointer + 6), responseBuffer.get(pointer + 7), responseBuffer.get(pointer + 8),
+                    responseBuffer.get(pointer + 9), responseBuffer.get(pointer + 10), responseBuffer.get(pointer + 11),
+                    responseBuffer.get(pointer + 12), responseBuffer.get(pointer + 13), responseBuffer.get(pointer + 14),
+                    responseBuffer.get(pointer + 15));
+            pointer += 16;
+        } else if (type == RecordType.CNAME || type == RecordType.NS || type == RecordType.MX) {
+            if (type == RecordType.MX) {
+                pointer += 2; // Skip preference
+            }
+            result = getName(responseBuffer, pointer);
+        } else {
+            byte data[] = new byte[rdLength];
+            for (int i = 0; i < rdLength; i++) {
+                data[i] = responseBuffer.get(pointer);
+                pointer++;
+            }
+            result = byteArrayToHexString(data);
+        }
+
+        InetAddress IP = null;
+        try {
+            IP = InetAddress.getByName(result);
+        } catch (Exception e) {
+            // Do nothing
+        }
+
+        DNSQuestion question = new DNSQuestion(hostName, type, recordClass);
+
+        ResourceRecord resourceRecord;
+        if (IP != null && (type == RecordType.A || type == RecordType.AAAA)) {
+            resourceRecord = new ResourceRecord(question, ttl, IP);
+        } else {
+            resourceRecord = new ResourceRecord(question, ttl, result);
+        }
+
+        verbose.printIndividualResourceRecord(resourceRecord, typeCode, classCode);
+        records.add(resourceRecord);
+        cache.addResult(resourceRecord);
+    }
+
+    /**
+     * Helper function to decode a domain name.
+     */
+    private static String getName(ByteBuffer responseBuffer, int ptr) {
+        String name = "";
+
+        while(true) {
+            int labelLength = responseBuffer.get(ptr);
+            // 0 indicates end of name
+            if (labelLength== 0)
+                break;
+            // 0xC0 indicates a pointer to the next byte
+            else if (responseBuffer.get(ptr) == (byte) 0xc0) {
+                int newPtr = ((responseBuffer.get(ptr) & 0x3F) << 8) | (responseBuffer.get(ptr + 1) & 0xFF);
+                ptr++;
+                // Recursively call getNameFromPointer to get the name
+                name += getName(responseBuffer, newPtr);
+                break;
+            }
+            // Reading a normal label
+            else {
+                for (int i = 0; i < labelLength; i++) {
+                    ptr++;
+                    char ch = (char) (responseBuffer.get(ptr));
+                    name += ch;
+                }
+                name += '.';
+                ptr++;
+            }
+        }
+
+        pointer = ptr + 1;
+
+        // Remove trailing '.'
+        if (name.length() > 0 && name.charAt(name.length() - 1) == '.') {
+            name = name.substring(0, name.length() - 1);
+        }
+
+        return name;
     }
 }
