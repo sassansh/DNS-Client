@@ -142,35 +142,66 @@ public class DNSLookupService {
      * @param server   Address of the server to be used for the first query.
      */
     protected void iterativeQuery(DNSQuestion question, InetAddress server) {
+        Set<ResourceRecord> nameServers;
+
+        while (cache.getCachedResults(question, true).isEmpty()) {
+            nameServers = individualQueryProcess(question, server);
+            if (nameServers.size() == 0) return;
+
+            // Check if returned name servers has known IP s
+            List<ResourceRecord> knownIPs = new ArrayList<>();
+            nameServers.forEach((r) -> {
+                DNSQuestion q = new DNSQuestion(r.getTextResult(), RecordType.A, RecordClass.IN);
+                knownIPs.addAll(cache.getCachedResults(q, false));
+            });
+
+            // Obtain the IP address of a random nameserver if non are known
+            if (knownIPs.size() == 0) {
+                ResourceRecord firstNs = nameServers.iterator().next();
+                DNSQuestion q = new DNSQuestion(firstNs.getTextResult(), RecordType.A, RecordClass.IN);
+                iterativeQuery(q, nameServer);
+                knownIPs.addAll(cache.getCachedResults(q, false));
+            }
+            try {
+                server = knownIPs.get(0).getInetResult();
+            } catch (Exception e) {
+                return;
+            }
+
+        }
 
         /* TO BE COMPLETED BY THE STUDENT */
-        Set<ResourceRecord> nextNameServers;
-        InetAddress IP = null;
-        DNSQuestion nameServerQuestion = null;
-        nextNameServers = individualQueryProcess(question, server);
 
-        while (!nextNameServers.isEmpty() && cache.getCachedResults(question, true).isEmpty()) {
-            for (ResourceRecord record : nextNameServers) {
-                nameServerQuestion = new DNSQuestion(record.getTextResult(),
-                        RecordType.A, record.getRecordClass());
-                List<ResourceRecord> nextNS = cache.getCachedResults(nameServerQuestion, true);
-                if (nextNS.isEmpty()) {
-                    continue;
-                } else {
-                    try {
-                        IP = nextNS.get(0).getInetResult();
-                        break;
-                    } catch (Exception e) {
-                        // Do nothing
-                    }
-                }
-            }
-            if (IP != null) {
-                iterativeQuery(question, IP);
-            } else {
-                iterativeQuery(nameServerQuestion, nameServer);
-            }
-        }
+
+//        Set<ResourceRecord> nextNameServers;
+//        InetAddress IP = null;
+//        DNSQuestion nameServerQuestion = null;
+//        nextNameServers = individualQueryProcess(question, server);
+//
+//        while (!nextNameServers.isEmpty() && cache.getCachedResults(question, true).isEmpty()) {
+//            for (ResourceRecord record : nextNameServers) {
+//                nameServerQuestion = new DNSQuestion(record.getTextResult(),
+//                        RecordType.A, record.getRecordClass());
+//                List<ResourceRecord> nextNS = cache.getCachedResults(nameServerQuestion, true);
+//                // gotta look for value if cname....
+//                if (nextNS.isEmpty()) {
+//                    continue;
+//                } else {
+//                    try {
+//                        IP = nextNS.get(0).getInetResult();
+//                        break;
+//                    } catch (Exception e) {
+//                        // Do nothing
+//                    }
+//                }
+//            }
+//            if (IP != null) {
+//                iterativeQuery(question, IP);
+//            } else {
+//                // better do query on server instead of name server?
+//                iterativeQuery(nameServerQuestion, nameServer);
+//            }
+//        }
     }
 
     /**
@@ -190,11 +221,9 @@ public class DNSLookupService {
      * set.
      */
     protected Set<ResourceRecord> individualQueryProcess(DNSQuestion question, InetAddress server) {
-        // First pass implementation for testing other functions
-        // TODO: Refine once called functions are implemented
-        int TEMP_BUFF_SIZE = 1024;
-        ByteBuffer queryBuffer = ByteBuffer.allocate(TEMP_BUFF_SIZE);
-        ByteBuffer responseBuffer = ByteBuffer.allocate(TEMP_BUFF_SIZE);
+        int MAX_BUFF_SIZE = 512;
+        ByteBuffer queryBuffer = ByteBuffer.allocate(MAX_BUFF_SIZE);
+        ByteBuffer responseBuffer = ByteBuffer.allocate(MAX_BUFF_SIZE);
         int transactionID = buildQuery(queryBuffer, question);
         int receivedTransactionID = 999999; // set as Invalid ID
 
@@ -203,11 +232,12 @@ public class DNSLookupService {
             try {
                 verbose.printQueryToSend(question, server, transactionID);
                 socket.send(new DatagramPacket(queryBuffer.array(), queryBuffer.position(), server, DEFAULT_DNS_PORT));
-                DatagramPacket responsePacket = new DatagramPacket(responseBuffer.array(), TEMP_BUFF_SIZE);
                 queryAttempt++;
                 long timeOut = System.currentTimeMillis() + SO_TIMEOUT;
 
                 while (transactionID != receivedTransactionID && System.currentTimeMillis() < timeOut) {
+                    responseBuffer = ByteBuffer.allocate(MAX_BUFF_SIZE);
+                    DatagramPacket responsePacket = new DatagramPacket(responseBuffer.array(), MAX_BUFF_SIZE);
                     try {
                         socket.receive(responsePacket);
                         receivedTransactionID = responseBuffer.getShort(0);
@@ -218,7 +248,6 @@ public class DNSLookupService {
                     Set<ResourceRecord> nameServerResults = processResponse(responseBuffer);
                     return nameServerResults;
                 }
-                return null;
             } catch (IOException e) {}
         }
 
