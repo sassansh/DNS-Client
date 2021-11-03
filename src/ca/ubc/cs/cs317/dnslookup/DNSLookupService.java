@@ -317,14 +317,17 @@ public class DNSLookupService {
         Set<ResourceRecord> additionalRecords = new HashSet<>();
 
         try {
+            // Process Answer Section
             verbose.printAnswersHeader(ANCOUNT);
             for (int i = 0; i < ANCOUNT; i++) {
                 processRecords(responseBuffer, answerRecords);
             }
+            // Process Authority Section
             verbose.printNameserversHeader(NSCOUNT);
             for (int i = 0; i < NSCOUNT; i++) {
                 processRecords(responseBuffer, authorityRecords);
             }
+            // Process Additional Section
             verbose.printAdditionalInfoHeader(ARCOUNT);
             for (int i = 0; i < ARCOUNT; i++) {
                 processRecords(responseBuffer, additionalRecords);
@@ -333,14 +336,13 @@ public class DNSLookupService {
             // Do nothing
         }
 
-        // Filter out NS records
+        // Filter out NS records from authorityRecords
         Set<ResourceRecord> nsRecords = new HashSet<>();
         for (ResourceRecord record : authorityRecords) {
             if (record.getRecordType() == RecordType.NS) {
                 nsRecords.add(record);
             }
         }
-
         return nsRecords;
     }
 
