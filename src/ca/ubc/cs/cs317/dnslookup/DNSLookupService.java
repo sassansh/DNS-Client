@@ -144,10 +144,9 @@ public class DNSLookupService {
     protected void iterativeQuery(DNSQuestion question, InetAddress server) {
         Set<ResourceRecord> nameServers;
 
-        while (cache.getCachedResults(question, true).isEmpty()) {
-            nameServers = individualQueryProcess(question, server);
-            if (nameServers == null || nameServers.size() == 0) return;
+        nameServers = individualQueryProcess(question, server);
 
+        while (nameServers != null && !nameServers.isEmpty() && cache.getCachedResults(question, true).isEmpty()) {
             // Check if returned name servers has known IP s
             List<ResourceRecord> knownIPs = new ArrayList<>();
             nameServers.forEach((r) -> {
@@ -167,6 +166,7 @@ public class DNSLookupService {
             } catch (Exception e) {
                 return;
             }
+            nameServers = individualQueryProcess(question, server);
         }
     }
 
