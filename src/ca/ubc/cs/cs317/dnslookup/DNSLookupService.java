@@ -206,7 +206,7 @@ public class DNSLookupService {
             // Receive response
             try {
                 socket.receive(responsePacket);
-                int receivedTransactionID = responseBuffer.getShort(0);
+                int receivedTransactionID = (int) (responseBuffer.getShort(0) & 0xFFFFL);
                 boolean isResponse = ((responseBuffer.get(2) >> 7) & 0x01) == 1;
 
                 // Check if response is valid (ID match & QR =1), if not, try again
@@ -272,7 +272,7 @@ public class DNSLookupService {
         queryBuffer.putShort((short) question.getRecordType().getCode());
         queryBuffer.putShort((short) question.getRecordClass().getCode());
 
-        return ByteBuffer.wrap(transactionID).getShort();
+        return (int) (queryBuffer.getShort(0) & 0xFFFFL);
     }
 
     /**
