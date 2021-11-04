@@ -206,7 +206,7 @@ public class DNSLookupService {
             // Receive response
             try {
                 socket.receive(responsePacket);
-                int receivedTransactionID = (int) (responseBuffer.getShort(0) & 0xFFFFL);
+                int receivedTransactionID = (responseBuffer.getShort(0) & 0xFFFF);
                 boolean isResponse = ((responseBuffer.get(2) >> 7) & 0x01) == 1;
 
                 // Check if response is valid (ID match & QR =1), if not, try again
@@ -215,7 +215,7 @@ public class DNSLookupService {
                     responsePacket = new DatagramPacket(responseBuffer.array(), MAX_BUFF_SIZE);
                     responseBuffer.position(0);
                     socket.receive(responsePacket);
-                    receivedTransactionID = responseBuffer.getShort(0);
+                    receivedTransactionID = (responseBuffer.getShort(0) & 0xFFFF);
                     isResponse = ((responseBuffer.get(2) >> 7) & 0x01) == 1;
                 }
                 // Parse response
@@ -272,7 +272,7 @@ public class DNSLookupService {
         queryBuffer.putShort((short) question.getRecordType().getCode());
         queryBuffer.putShort((short) question.getRecordClass().getCode());
 
-        return (int) (queryBuffer.getShort(0) & 0xFFFFL);
+        return (queryBuffer.getShort(0) & 0xFFFF);
     }
 
     /**
@@ -290,22 +290,22 @@ public class DNSLookupService {
     protected Set<ResourceRecord> processResponse(ByteBuffer responseBuffer) {
 
         // Process Response Header
-        int ID = responseBuffer.getShort(0);
+        int ID = (responseBuffer.getShort(0) & 0xFFFF);
         boolean AA = ((responseBuffer.get(2) >> 2) & 0x01) == 1;
         int RCODE = responseBuffer.get(3) & 0x0F;
 
         verbose.printResponseHeaderInfo(ID, AA, RCODE);
 
         // Count of Questions, Answers, NameServers & Additional Records
-        int QDCOUNT = responseBuffer.getShort(4);
-        int ANCOUNT = responseBuffer.getShort(6);
-        int NSCOUNT = responseBuffer.getShort(8);
-        int ARCOUNT = responseBuffer.getShort(10);
+        int QDCOUNT = (responseBuffer.getShort(4) & 0xFFFF);
+        int ANCOUNT = (responseBuffer.getShort(6) & 0xFFFF);
+        int NSCOUNT = (responseBuffer.getShort(8) & 0xFFFF);
+        int ARCOUNT = (responseBuffer.getShort(10) & 0xFFFF);
 
         // Skip over the question section
         pointer = 12; // Start of QNAME in first Question section
         for (int i = 0; i < QDCOUNT; i++) {
-            while (responseBuffer.get(pointer) != 0) {
+            while (responseBuffer.get(pointer) != 0x00) {
                 pointer++;
             }
             pointer += 5;
@@ -368,18 +368,18 @@ public class DNSLookupService {
         // Get Hostname
         String hostName = getName(responseBuffer, pointer);
         // Get Type
-        int typeCode = responseBuffer.getShort(pointer);
+        int typeCode = (responseBuffer.getShort(pointer) & 0xFFFF);
         RecordType type = RecordType.getByCode(typeCode);
         pointer += 2;
         // Get Class
-        int classCode = responseBuffer.getShort(pointer);
+        int classCode = (responseBuffer.getShort(pointer)  & 0xFFFF);
         RecordClass recordClass = RecordClass.getByCode(classCode);
         pointer += 2;
         // Get TTL
-        int ttl = responseBuffer.getInt(pointer);
+        int ttl = (responseBuffer.getInt(pointer) & 0xFFFFFFFF);
         pointer += 4;
         // Get RDLENGTH
-        int rdLength = responseBuffer.getShort(pointer);
+        int rdLength = (responseBuffer.getShort(pointer) & 0xFFFF);
         pointer += 2;
 
         // Get RDATA
@@ -440,7 +440,7 @@ public class DNSLookupService {
         String name = "";
 
         while(true) {
-            int labelLength = responseBuffer.get(ptr);
+            int labelLength = (responseBuffer.get(ptr) & 0xFF);
             // 0 indicates end of name
             if (labelLength== 0)
                 break;
