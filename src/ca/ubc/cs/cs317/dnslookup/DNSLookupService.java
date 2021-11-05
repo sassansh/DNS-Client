@@ -208,15 +208,17 @@ public class DNSLookupService {
                 socket.receive(responsePacket);
                 int receivedTransactionID = (responseBuffer.getShort(0) & 0xFFFF);
                 boolean isResponse = ((responseBuffer.get(2) >> 7) & 0x01) == 1;
+                int RCODE = responseBuffer.get(3) & 0x0F;
 
-                // Check if response is valid (ID match & QR =1), if not, try again
-                while (transactionID != receivedTransactionID || !isResponse) {
+                // Check if response is valid (ID match & QR = 1 & RCODE = 0), if not, try again
+                while (transactionID != receivedTransactionID || !isResponse || RCODE != 0) {
                     responseBuffer = ByteBuffer.allocate(MAX_BUFF_SIZE);
                     responsePacket = new DatagramPacket(responseBuffer.array(), MAX_BUFF_SIZE);
                     responseBuffer.position(0);
                     socket.receive(responsePacket);
                     receivedTransactionID = (responseBuffer.getShort(0) & 0xFFFF);
                     isResponse = ((responseBuffer.get(2) >> 7) & 0x01) == 1;
+                    RCODE = responseBuffer.get(3) & 0x0F;
                 }
                 // Parse response
                 Set<ResourceRecord> nameServerResults = processResponse(responseBuffer);
