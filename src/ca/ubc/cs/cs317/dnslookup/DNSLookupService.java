@@ -386,20 +386,18 @@ public class DNSLookupService {
 
         // Get RDATA
         String result = "";
-        if (type == RecordType.A) {
-            result = String.format("%d.%d.%d.%d", responseBuffer.get(pointer) & 0xFFL,
-                    responseBuffer.get(pointer + 1) & 0xFFL, responseBuffer.get(pointer + 2)& 0xFFL,
-                    responseBuffer.get(pointer + 3) & 0xFFL); // OxFFL for unsigned byte
-            pointer += 4;
-        } else if (type == RecordType.AAAA) {
-            result = String.format("%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
-                    responseBuffer.get(pointer), responseBuffer.get(pointer + 1), responseBuffer.get(pointer + 2),
-                    responseBuffer.get(pointer + 3), responseBuffer.get(pointer + 4), responseBuffer.get(pointer + 5),
-                    responseBuffer.get(pointer + 6), responseBuffer.get(pointer + 7), responseBuffer.get(pointer + 8),
-                    responseBuffer.get(pointer + 9), responseBuffer.get(pointer + 10), responseBuffer.get(pointer + 11),
-                    responseBuffer.get(pointer + 12), responseBuffer.get(pointer + 13), responseBuffer.get(pointer + 14),
-                    responseBuffer.get(pointer + 15));
-            pointer += 16;
+        InetAddress IP = null;
+        if (type == RecordType.A || type == RecordType.AAAA) {
+            byte[] IPArray = new byte[rdLength];
+            for (int i = 0; i < rdLength; i++) {
+                IPArray[i] = responseBuffer.get(pointer);
+                pointer ++;
+            }
+            try {
+                IP = InetAddress.getByAddress(IPArray);
+            } catch (Exception e) {
+                // Do nothing
+            }
         } else if (type == RecordType.CNAME || type == RecordType.NS || type == RecordType.MX) {
             if (type == RecordType.MX) {
                 pointer += 2; // Skip preference
@@ -412,13 +410,6 @@ public class DNSLookupService {
                 pointer++;
             }
             result = byteArrayToHexString(data);
-        }
-
-        InetAddress IP = null;
-        try {
-            IP = InetAddress.getByName(result);
-        } catch (Exception e) {
-            // Do nothing
         }
 
         DNSQuestion question = new DNSQuestion(hostName, type, recordClass);
@@ -473,6 +464,6 @@ public class DNSLookupService {
             name = name.substring(0, name.length() - 1);
         }
 
-        return name;
+        return name.toLowerCase();
     }
 }
