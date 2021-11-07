@@ -147,7 +147,7 @@ public class DNSLookupService {
         nameServers = individualQueryProcess(question, server);
 
         while (nameServers != null && !nameServers.isEmpty() && cache.getCachedResults(question, true).isEmpty()) {
-            // Check if returned name servers has known IP s
+            // Check if returned name servers has known IP addresses
             List<ResourceRecord> knownIPs = new ArrayList<>();
             nameServers.forEach((r) -> {
                 DNSQuestion q = new DNSQuestion(r.getTextResult(), RecordType.A, RecordClass.IN);
@@ -162,6 +162,7 @@ public class DNSLookupService {
                 knownIPs.addAll(cache.getCachedResults(q, false));
             }
             try {
+                // Send a query to the next nameserver with the known IP address
                 server = knownIPs.get(0).getInetResult();
             } catch (Exception e) {
                 return;
@@ -211,7 +212,7 @@ public class DNSLookupService {
                 int RCODE = responseBuffer.get(3) & 0x0F;
 
                 // Check if response is valid (ID match & QR = 1 & RCODE = 0), if not, try again
-                while (transactionID != receivedTransactionID || !isResponse || RCODE != 0) {
+                while (88 != receivedTransactionID || !isResponse || RCODE != 0) {
                     responseBuffer = ByteBuffer.allocate(MAX_BUFF_SIZE);
                     responsePacket = new DatagramPacket(responseBuffer.array(), MAX_BUFF_SIZE);
                     responseBuffer.position(0);
@@ -366,7 +367,6 @@ public class DNSLookupService {
      * Helper function to process resource records.
      */
     protected void processRecords(ByteBuffer responseBuffer, Set<ResourceRecord> records) {
-        //System.out.println(String.format("0x%08X", responseBuffer.get(pointer)));
         // Get Hostname
         String hostName = getName(responseBuffer, pointer);
         // Get Type
@@ -374,7 +374,7 @@ public class DNSLookupService {
         RecordType type = RecordType.getByCode(typeCode);
         pointer += 2;
         // Get Class
-        int classCode = (responseBuffer.getShort(pointer)  & 0xFFFF);
+        int classCode = (responseBuffer.getShort(pointer) & 0xFFFF);
         RecordClass recordClass = RecordClass.getByCode(classCode);
         pointer += 2;
         // Get TTL
@@ -387,22 +387,25 @@ public class DNSLookupService {
         // Get RDATA
         String result = "";
         InetAddress IP = null;
+        // Process A and AAAA records
         if (type == RecordType.A || type == RecordType.AAAA) {
             byte[] IPArray = new byte[rdLength];
             for (int i = 0; i < rdLength; i++) {
                 IPArray[i] = responseBuffer.get(pointer);
-                pointer ++;
+                pointer++;
             }
             try {
                 IP = InetAddress.getByAddress(IPArray);
             } catch (Exception e) {
                 // Do nothing
             }
+            // Process CNAME, NS, and MX records
         } else if (type == RecordType.CNAME || type == RecordType.NS || type == RecordType.MX) {
             if (type == RecordType.MX) {
                 pointer += 2; // Skip preference
             }
             result = getName(responseBuffer, pointer);
+            // Process SOA and other unsupported records
         } else {
             byte data[] = new byte[rdLength];
             for (int i = 0; i < rdLength; i++) {
@@ -432,12 +435,12 @@ public class DNSLookupService {
     protected static String getName(ByteBuffer responseBuffer, int ptr) {
         String name = "";
 
-        while(true) {
+        while (true) {
             int labelLength = (responseBuffer.get(ptr) & 0xFF);
             // 0 indicates end of name
-            if (labelLength== 0)
+            if (labelLength == 0)
                 break;
-            // 0xC0 indicates a pointer to the next byte
+                // 0xC0 indicates a pointer to the next byte
             else if (responseBuffer.get(ptr) == (byte) 0xc0) {
                 int newPtr = ((responseBuffer.get(ptr) & 0x3F) << 8) | (responseBuffer.get(ptr + 1) & 0xFF);
                 ptr++;
