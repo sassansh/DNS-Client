@@ -212,7 +212,7 @@ public class DNSLookupService {
                 int RCODE = responseBuffer.get(3) & 0x0F;
 
                 // Check if response is valid (ID match & QR = 1 & RCODE = 0), if not, try again
-                while (88 != receivedTransactionID || !isResponse || RCODE != 0) {
+                while (transactionID != receivedTransactionID || !isResponse || RCODE != 0) {
                     responseBuffer = ByteBuffer.allocate(MAX_BUFF_SIZE);
                     responsePacket = new DatagramPacket(responseBuffer.array(), MAX_BUFF_SIZE);
                     responseBuffer.position(0);
