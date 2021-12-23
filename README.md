@@ -51,6 +51,8 @@ You should have [JDK 10](https://www.oracle.com/ca-en/java/technologies/java-arc
 
 2. Open the project in IntelliJ.
 
+3. To open the GUI, Run: `ca.ubc.cs317.dnslookup.DNSLookupCUI`
+
 ## Assignment Description 📚
 
 ### Special Note
